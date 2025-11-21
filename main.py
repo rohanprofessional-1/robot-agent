@@ -5,14 +5,16 @@ This is a simple example to get you started with LangChain.
 
 import os
 from dotenv import load_dotenv
+import URBasic
 
 # Load environment variables from .env file
 load_dotenv()
 
-from langchain.agents import AgentExecutor, create_openai_tools_agent
+from langchain.agents.agent_executor import AgentExecutor
+from langchain.agents.create_openai_tools_agent import create_openai_tools_agent
 from langchain_openai import ChatOpenAI
 from langchain import hub
-from langchain.tools import Tool
+from langchain_core.tools import Tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # Example: Simple calculator tool
