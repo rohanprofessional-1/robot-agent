@@ -49,6 +49,12 @@ class RobotController:
         if self.connected:
             return True
         
+        if not URBasic_available:
+            print("Warning: URBasic is not available. Using mock robot connection.")
+            print("To enable real robot control, please ensure URBasic is properly installed.")
+            self.connected = True  # Allow mock connection for testing
+            return True
+        
         try:
             print(f"Connecting to robot at {self.robot_ip}...")
             self.robot_model = URBasic.robotModel.RobotModel()

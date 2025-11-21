@@ -15,8 +15,8 @@ load_dotenv()
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain.agents.agent_executor import AgentExecutor
-from langchain.agents.create_openai_tools_agent import create_openai_tools_agent
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents.openai_tools.base import create_openai_tools_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import Tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
