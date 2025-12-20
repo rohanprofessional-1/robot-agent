@@ -105,6 +105,9 @@ tools = [
         func=get_robot_position,
         description="Get the current joint positions of the robot in degrees. Returns 6 values representing each joint angle."
     ),
+    Tool(
+        
+    )
 ]
 
 
