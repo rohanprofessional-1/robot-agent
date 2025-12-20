@@ -24,7 +24,7 @@ from robot_controller import get_robot_controller
 # Initialize robot controller
 ROBOT_IP = os.getenv('ROBOT_IP', '169.254.152.222')  # Can be set in .env file
 robot_controller = get_robot_controller(robot_ip=ROBOT_IP)
-
+CAMERA_PROC = os.getenv('ROBOFLOW_API_KEY')
 # System prompt that enforces returning to home after actions
 SYSTEM_PROMPT = """You are a helpful robot control assistant. You can control a UR robot arm through natural language commands.
 
