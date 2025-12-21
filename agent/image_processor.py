@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import cv2
 import numpy as np
 import roboflow
+from datetime import datetime
 # load your test tube model
 model = YOLO("test-tubes.pt")  # Need to change this
 COLOR_RANGES = {
@@ -57,15 +58,7 @@ class ImageProcessor:
         return full_mask, result
 
 
-    def capture_image(camera_index=0, filename="captured_image.jpg"):
-        """
-        Captures a single image from a USB camera and saves it to a file.
-        
-        Args:
-            camera_index (int): The index of the camera to use (0 is usually default, 
-                                try 1, 2, etc. if you have multiple cameras).
-            filename (str): The name of the file to save the image as.
-        """
+    def capture_image(camera_index=0):
         cap = cv2.VideoCapture(camera_index)
         
         if not cap.isOpened():
@@ -88,6 +81,8 @@ class ImageProcessor:
     def image_to_coords():
         
         raise NotImplementedError("Yet to be implemented")
+    
+    
     
 _image_processor = None
 
