@@ -39,7 +39,9 @@ Available robot operations:
 - move_to_position: Move robot to specified joint angles (6 values in degrees)
 - move_to_home: Move robot to its home/safe position
 - get_current_position: Get the current joint angles of the robot
-- capture_image: Capture an image using the robot's camera
+- capture_image: Capture an image using the robot's camera, use this only when a user specifically asks to take a picture. Returns the filename of the saved image.
+- detect_test_tubes: Detect all test tubes in the latest image.
+- find_tubes_by_color: Find all test tubes of a given color in the latest image. Returns a list of dicts with tube_id and pixel coordinates of the tube center.
 
 Always be safety-conscious and confirm movements before executing them."""
 
@@ -70,6 +72,29 @@ def initialize_agent():
     
     def capture_image(*args, **kwargs) -> str:
         return image_processor.capture_image()
+    def find_tubes_by_color(color_name: str) -> list[dict]:
+        """
+        Find all test tubes of a given color in the latest image.
+        Returns a list of dicts with tube_id and pixel coordinates of the tube center.
+        """
+        image_path = image_processor.capture_image()
+        tubes = image_processor.get_colored_tubes(image_path, color_name)
+        result = []
+        for tube in tubes:
+            x1, y1, x2, y2 = tube.bbox
+            cx = (x1 + x2) / 2
+            cy = (y1 + y2) / 2
+            X, Y, Z = image_processor.image_to_coords(cx, cy)
+            result.append({
+                "tube_id": tube.tube_id,
+                "color": tube.color,
+                "pixel_center": (cx, cy),
+                "world_coords": (X, Y, Z),
+                "conf": tube.conf,
+            })
+        return result
+    def detect_test_tubes(image_path: str) -> list[dict]:
+        return image_processor.detect_test_tubes(image_path=image_path)
 
 
 
@@ -95,6 +120,16 @@ def initialize_agent():
             name="capture_image",
             func=capture_image,
             description="Capture an image using the robot's camera. Returns the filename of the saved image."
+        ),
+        Tool(
+            name="detect_test_tubes",
+            func=detect_test_tubes,
+            description="Finds all the test tubes in the latest image. Input should be the path file to the image, on default use the latest image. Returns a list of dicts with tube_id and pixel coordinates of the tube center."
+        ),
+        Tool(
+            name="find_tubes_by_color",
+            func=find_tubes_by_color,
+            description="Find all test tubes of a given color in the latest image. Input should be the path file to the image, on default use the latest image. Returns a list of dicts with tube_id and pixel coordinates of the tube center."
         )
     ]
     
