@@ -1,10 +1,10 @@
-from ultralytics import YOLO
 import cv2
 import numpy as np
 import roboflow
 from datetime import datetime
+import os
 # load your test tube model
-model = YOLO("test-tubes.pt")  # Need to change this
+
 COLOR_RANGES = {
     "red":    [(np.array([0, 120, 70]),  np.array([10, 255, 255])),
                (np.array([170, 120, 70]), np.array([180, 255, 255]))],
@@ -16,11 +16,11 @@ COLOR_RANGES = {
 class ImageProcessor:
     def __init__(self, model_api):
         rf = roboflow.Roboflow(api_key=model_api)
-        project = rf.workspace("tube-detection-x52mi-9pgxe").project("tube-detection-x52mi-9pgxe")
+        project = rf.workspace("researchworker").project("tube-detection-x52mi-9pgxe")
         self.model = project.version(1).model  # Loads YOLOv8
 
     
-    def get_test_tube_rois(frame_bgr):
+    def get_test_tube_rois(self, frame_bgr):
         # Use Roboflow model inference (same YOLO format)
         results = self.model.predict(frame_bgr, confidence=0.4, image_size=640)[0]
         
@@ -42,7 +42,7 @@ class ImageProcessor:
 
         return rois
 
-    def filter_color_bgr_image(img_bgr, color_name):
+    def filter_color_bgr_image(self, img_bgr, color_name):
         if color_name not in COLOR_RANGES:
             raise ValueError(f"Unknown color '{color_name}'")
 
@@ -58,29 +58,35 @@ class ImageProcessor:
         return full_mask, result
 
 
-    def capture_image(camera_index=0):
+    def capture_image(self, camera_index=0):
         cap = cv2.VideoCapture(camera_index)
-        
+        cur_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dir_path = "logs"
+        os.makedirs(dir_path, exist_ok=True)
+        filename = os.path.join(dir_path, f"{cur_datetime}.jpg")
         if not cap.isOpened():
-            print(f"Error: Could not open video device {camera_index}. Check the camera index.")
-            return
+            return f"Error: Could not open video device {camera_index}. Check the camera index."
 
         print(f"Accessing camera at index {camera_index}...")
         ret, frame = cap.read()
+        cap.release()
+        cv2.destroyAllWindows()
         
         if ret:
             cv2.imwrite(filename, frame)
             print(f"Successfully captured image and saved as {filename}")
+            return filename
         else:
-            print("Error: Could not read a frame from the camera.")
-        cap.release()
-        cv2.destroyAllWindows()
+            return "Error: Could not read a frame from the camera."
+    
 
 
 
-    def image_to_coords():
+    def image_to_coords(self, x, y):
         
         raise NotImplementedError("Yet to be implemented")
+
+   
     
     
     

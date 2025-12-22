@@ -16,15 +16,9 @@ load_dotenv()
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain.agents.openai_tools.base import create_openai_tools_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import Tool
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langgraph.checkpoint.memory import MemorySaver  # 🔄 NEW: LangGraph memory
-from langgraph.prebuilt import create_react_agent  # 🔄 NEW: LangGraph agent
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory  # 🔄 NEW: Streamlit history
-from langchain_core.messages import HumanMessage  # 🔄 NEW: For message handling
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 
 # Import robot controller
 from robot_controller import get_robot_controller
@@ -32,7 +26,7 @@ from robot_controller import get_robot_controller
 from image_processor import get_image_processor
 
 # System prompt (unchanged)
-SYSTEM_PROMPT = """You are a helpful robot control assistant. You can control a UR robot arm through natural language commands.
+SYSTEM_PROMPT = """You are a helpful robot control assistant. You can control a UR robot arm through natural language commands. Additionally you are equipped with a camera and a vision pipeline to process pictures located in the directory logs.
 
 IMPORTANT RULES:
 1. After EVERY user action that involves moving the robot, you MUST automatically return the robot to its home position using the move_to_home tool.
@@ -45,6 +39,7 @@ Available robot operations:
 - move_to_position: Move robot to specified joint angles (6 values in degrees)
 - move_to_home: Move robot to its home/safe position
 - get_current_position: Get the current joint angles of the robot
+- capture_image: Capture an image using the robot's camera
 
 Always be safety-conscious and confirm movements before executing them."""
 
@@ -67,12 +62,18 @@ def initialize_agent():
         except Exception as e:
             return f"❌ Error: {str(e)}"
     
-    def move_robot_to_home() -> str:
+    def move_robot_to_home(*args, **kwargs) -> str:
         return robot_controller.move_to_home()
     
-    def get_robot_position() -> str:
+    def get_robot_position(*args, **kwargs) -> str:
         return robot_controller.get_current_position()
     
+    def capture_image(*args, **kwargs) -> str:
+        return image_processor.capture_image()
+
+
+
+
     # Create tools (MINOR: Better formatting)
     tools = [
         Tool(
@@ -90,25 +91,21 @@ def initialize_agent():
             func=get_robot_position,
             description="Get the current joint positions of the robot in degrees. Returns 6 values representing each joint angle."
         ),
+        Tool(
+            name="capture_image",
+            func=capture_image,
+            description="Capture an image using the robot's camera. Returns the filename of the saved image."
+        )
     ]
     
     # Initialize LLM
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     
-    # Initialize persistent message history  # 🔄 NEW
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = StreamlitChatMessageHistory(key="robot_chat")
+    # Bind tools to LLM
+    llm_with_tools = llm.bind_tools(tools)
+    tool_map = {tool.name: tool for tool in tools}
     
-    # Create persistent checkpointer  # 🔄 NEW
-    checkpointer = MemorySaver()
-    
-    # Create agent with memory  # 🔄 CHANGED: LangGraph instead of OpenAI tools agent
-    agent = create_react_agent(llm, tools, state_modifier=SYSTEM_PROMPT)
-    
-    # Config with thread_id for session persistence  # 🔄 NEW
-    config = {"configurable": {"thread_id": "robot_session"}}
-    
-    return agent, checkpointer, config, robot_controller, st.session_state.chat_history
+    return llm_with_tools, tool_map, robot_controller
 
 def update_robot_state(position: str):  # 🔄 NEW: Robot task state tracking
     """Update robot task state in session."""
@@ -146,28 +143,27 @@ def main():
             "active_goal": None
         }
     
-    # Initialize agent on first run  # 🔄 CHANGED: Memory-enabled initialization
-    if not st.session_state.agent_initialized:
-        with st.spinner("🤖 Initializing robot agent with persistent memory..."):
-            try:
-                # Check for API key
-                if not os.getenv("OPENAI_API_KEY"):
-                    st.error("⚠️ OPENAI_API_KEY not found. Please set it in your .env file.")
-                    st.stop()
-                
-                agent_executor, checkpointer, config, robot_controller, chat_history = initialize_agent()
-                
-                # Store in session state  # 🔄 CHANGED: Store all memory components
-                st.session_state.agent_executor = agent_executor
-                st.session_state.checkpointer = checkpointer
-                st.session_state.config = config
-                st.session_state.robot_controller = robot_controller
-                st.session_state.chat_history = chat_history
-                st.session_state.agent_initialized = True
-                st.success("✅ Agent with **persistent memory** initialized successfully!")
-            except Exception as e:
-                st.error(f"Failed to initialize agent: {str(e)}")
-                st.stop()
+    # Initialize/Refresh agent logic on every run to ensure code changes are applied
+    try:
+        # Check for API key
+        if not os.getenv("OPENAI_API_KEY"):
+            st.error("⚠️ OPENAI_API_KEY not found. Please set it in your .env file.")
+            st.stop()
+        
+        llm_with_tools, tool_map, robot_controller = initialize_agent()
+        
+        # Update session state with fresh tools and controller
+        st.session_state.llm = llm_with_tools
+        st.session_state.tool_map = tool_map
+        st.session_state.robot_controller = robot_controller
+        
+        if not st.session_state.agent_initialized:
+            st.session_state.agent_initialized = True
+            st.success("✅ Agent with **persistent memory** initialized successfully!")
+            
+    except Exception as e:
+        st.error(f"Failed to initialize agent: {str(e)}")
+        st.stop()
     
     # Display chat history
     for message in st.session_state.messages:
@@ -185,29 +181,37 @@ def main():
         with st.chat_message("assistant"):
             with st.spinner("🤖 Processing command with memory..."):
                 try:
-                    agent, checkpointer, config, robot_controller = (
-                        st.session_state.agent_executor,
-                        st.session_state.checkpointer,
-                        st.session_state.config,
-                        st.session_state.robot_controller
-                    )
+                    # Construct message history
+                    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+                    for msg in st.session_state.messages:
+                        if msg["role"] == "user":
+                            messages.append(HumanMessage(content=msg["content"]))
+                        elif msg["role"] == "assistant":
+                            messages.append(AIMessage(content=msg["content"]))
                     
-                    # Run agent with persistent memory  # 🔄 NEW: LangGraph invoke pattern
-                    result = agent.invoke(
-                        {"messages": [HumanMessage(content=prompt)]},
-                        config=config,
-                        checkpointer=checkpointer
-                    )
+                    # Run agent loop
+                    response = st.session_state.llm.invoke(messages)
                     
-                    # Extract final response  # 🔄 NEW: Extract from messages
-                    response = result["messages"][-1].content
-                    st.markdown(response)
+                    while response.tool_calls:
+                        messages.append(response)
+                        for tool_call in response.tool_calls:
+                            tool_name = tool_call["name"]
+                            if tool_name in st.session_state.tool_map:
+                                tool_result = st.session_state.tool_map[tool_name].invoke(tool_call["args"])
+                                messages.append(ToolMessage(tool_call_id=tool_call["id"], content=str(tool_result)))
+                            else:
+                                messages.append(ToolMessage(tool_call_id=tool_call["id"], content="Error: Tool not found"))
+                        
+                        response = st.session_state.llm.invoke(messages)
+                    
+                    response_text = response.content
+                    st.markdown(response_text)
                     
                     # Add assistant response to chat history
-                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    st.session_state.messages.append({"role": "assistant", "content": response_text})
                     
                     # Update robot state if position changed  # 🔄 NEW
-                    current_pos = robot_controller.get_current_position()
+                    current_pos = st.session_state.robot_controller.get_current_position()
                     update_robot_state(current_pos)
                     
                 except Exception as e:
@@ -239,11 +243,6 @@ def main():
         
         # 🔄 NEW: Memory management buttons
         st.header("🧠 Memory Controls")
-        if st.button("🧹 Clear Agent Memory"):
-            st.session_state.chat_history.clear()
-            st.success("✅ Conversation memory cleared!")
-            st.rerun()
-        st.caption("Clears agent memory but keeps robot connection")
         
         if st.button("📊 Show Robot State"):  # 🔄 NEW
             st.json(st.session_state.robot_state)
