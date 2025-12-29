@@ -29,8 +29,40 @@ class TestTube:
 class ImageProcessor:
     def __init__(self, model_api):
         rf = roboflow.Roboflow(api_key=model_api)
-        project = rf.workspace("researchworker").project("tube-detection-x52mi-9pgxe")
+        project = rf.workspace("researchworker").project("test-tubes-dataset-hj7sp")
         self.model = project.version(1).model  # Loads YOLOv8
+        self.last_image_path = None
+        self.last_image_path: str | None = None
+        self.last_detections: list | None = None
+        
+    def capture_image(self, camera_index=0):
+        cap = cv2.VideoCapture(camera_index)
+        cur_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dir_path = "logs"
+        os.makedirs(dir_path, exist_ok=True)
+        filename = os.path.join(dir_path, f"{cur_datetime}.jpg")
+        if not cap.isOpened():
+            return f"Error: Could not open video device {camera_index}. Check the camera index."
+
+        print(f"Accessing camera at index {camera_index}...")
+        ret, frame = cap.read()
+        cap.release()
+        cv2.destroyAllWindows()
+        
+        if ret:
+            cv2.imwrite(filename, frame)
+            print(f"Successfully captured image and saved as {filename}")
+            self.last_image_path = filename
+            return filename
+        else:
+            return "Error: Could not read a frame from the camera." 
+           
+    def load_image(self, image_path: str):
+        """Read a BGR image from disk."""
+        img = cv2.imread(image_path)
+        if img is None:
+            raise ValueError(f"Could not read image at {image_path}")
+        return img
 
     def detect_test_tubes(self, image_path: str) -> list[TestTube]:
         frame_bgr = cv2.imread(image_path)
@@ -64,6 +96,8 @@ class ImageProcessor:
                 "conf": conf,
                 "roi": roi,
             })
+        self.last_image_path = image_path
+        self.last_detections = tubes
 
         return tubes
 
@@ -93,7 +127,10 @@ class ImageProcessor:
         frame_bgr = cv2.imread(image_path)
         if frame_bgr is None:
             raise ValueError(f"Could not read image at {image_path}")
-
+        if self.last_image_path == image_path and self.last_detections is not None:
+            tubes = self.last_detections
+        else:
+            tubes = self.detect_test_tubes(image_path)
         tubes = self.detect_test_tubes(image_path)
         colored = []
         for tube in tubes:
@@ -105,26 +142,7 @@ class ImageProcessor:
 
 
 
-    def capture_image(self, camera_index=0):
-        cap = cv2.VideoCapture(camera_index)
-        cur_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dir_path = "logs"
-        os.makedirs(dir_path, exist_ok=True)
-        filename = os.path.join(dir_path, f"{cur_datetime}.jpg")
-        if not cap.isOpened():
-            return f"Error: Could not open video device {camera_index}. Check the camera index."
-
-        print(f"Accessing camera at index {camera_index}...")
-        ret, frame = cap.read()
-        cap.release()
-        cv2.destroyAllWindows()
-        
-        if ret:
-            cv2.imwrite(filename, frame)
-            print(f"Successfully captured image and saved as {filename}")
-            return filename
-        else:
-            return "Error: Could not read a frame from the camera."
+    
     
 
 
