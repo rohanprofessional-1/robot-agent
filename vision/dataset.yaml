@@ -1,0 +1,6 @@
+path: vision  # root dir
+train: vision/train_images
+val: vision/val_images
+
+names:
+  0: tube
