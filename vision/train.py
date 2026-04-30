@@ -5,7 +5,7 @@ model = YOLO("yolov8n.pt")
 
 # 2. Train the model
 results = model.train(
-    data="dataset.yaml",
+    data="/Users/rohannair/Desktop/Research/RobotAgent/vision/dataset.yaml",
     epochs=100,  # Start with 100, it will stop early if it plateaus
     imgsz=640,  # Standard resolution
     batch=8,  # Small batch size for a small dataset
